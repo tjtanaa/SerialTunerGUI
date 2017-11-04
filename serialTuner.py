@@ -155,7 +155,9 @@ def scale_update():
             if scaleChanged == False:
                 sp.sendCommand(tScale.sPVar, paramList[param_index].subParams[index].index)
             tScale.valueChanged = False
+        index = index + 1
 
+    index = 0
     scaleChanged = False
     for tScale in tScaleList:
         if tScale.scaleChanged == True:
