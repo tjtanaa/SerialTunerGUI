@@ -7,7 +7,7 @@ import params as p
 
 window = tk.Tk()
 window.title('SerialTuner')
-window.geometry('800x500')
+window.geometry('900x500')
 
 #====================Serial Connection====================
 sp = sc.serialPort()
@@ -18,7 +18,7 @@ eserialName.place(x=210,y=8)
 connectStatusString = tk.StringVar()
 connectStatusString.set('Status: Not connected')
 lconnectStatus = \
-    tk.Label(window,textvariable = connectStatusString,font=('Arial,8')).place(x=495,y=10)
+    tk.Label(window,textvariable = connectStatusString,font=('Arial,7')).place(x=490,y=10)
 
 tconnectButton = tk.StringVar()
 tconnectButton.set('Connect')
@@ -42,17 +42,7 @@ bconnect.place(x=375,y=5)
 clb = tk.Listbox(window,font=('Arial,5'),width=15,height = 15)
 clb.place(x=10,y=45)
 
-#TODO: This is just for testing , should be retrieved from STM32
 paramList = []
-
-for i in range(0,4):
-    parameter = p.param('Controller '+str(i))
-    parameter.addSubParam(p.subParam('Kp',5,1,0+2*i))
-    parameter.addSubParam(p.subParam('Ki',1,0.01,1+2*i))
-    paramList.append(parameter)
-
-paramList[3].addSubParam(p.subParam('Kd',10000,10,8))
-#end of test variables
 
 def list_show(paramList):
     global clb
@@ -103,7 +93,7 @@ def setScale(p):
     clearScale()
 
     for subp in p.subParams:
-        tScale = ts.tuneScale(subp.value, subp.division);
+        tScale = ts.tuneScale(subp.value, subp.power);
         tScaleList.append(tScale)
         scale = tk.Scale(window, label = subp.name,from_ = tScale.sPMin, to=tScale.sPMax,
             orient = tk.HORIZONTAL, length = 500, showvalue = True, tickinterval = tScale.sPInt,
@@ -135,7 +125,9 @@ def changeScale(subp, index):
         resolution = tScaleList[index].sPRes, command = tScaleList[index].tune)
     scaleList[index].set(tScaleList[index].sPVar)
     scaleList[index].place(x=scaleX,y=scaleY[index])
-
+#==================On-board flash update==================
+bflash = tk.Button(window,text = 'Update',command = sp.sendUpdateCommand,
+        width = 8, height = 1,font=('Arial,6'))
 #========================Update=========================
 scaleChanged = False
 def scale_update():
@@ -153,7 +145,8 @@ def scale_update():
         if tScale.valueChanged == True:
             paramList[param_index].subParams[index].value = tScale.sPVar
             if scaleChanged == False:
-                sp.sendCommand(tScale.sPVar, paramList[param_index].subParams[index].index)
+                sp.sendParam(tScale.sPVar, paramList[param_index].index, \
+                paramList[param_index].subParams[index].index)
             tScale.valueChanged = False
         index = index + 1
 
@@ -162,7 +155,10 @@ def scale_update():
     for tScale in tScaleList:
         if tScale.scaleChanged == True:
             changeScale(paramList[param_index].subParams[index],index)
-            paramList[param_index].subParams[index].division = tScale.sPDiv
+            paramList[param_index].subParams[index].power = tScale.sPPow
+            sp.sendScale(paramList[param_index].index, \
+                paramList[param_index].subParams[index].index, \
+                tScale.sPPow)
             tScale.scaleChanged = False
             scaleChanged = True
         index = index + 1
@@ -177,21 +173,42 @@ def scale_update():
             setScale(paramList[param_index])
             scaleChanged = True
 
+def param_update(sp):
+    global paramList
+    param_val_index = 8*(sp.param_count)
+    for i in range(0, sp.param_count):
+        parameter = p.param('Controller '+str(i), i)
+        for j in range(0, sp.rxBuffer[8*i]):
+            parameter.addSubParam(p.subParam('Subp'+str(j),\
+                sp.rxBuffer[param_val_index],sp.rxBuffer[8*i + j + 1],j))
+            param_val_index = param_val_index + 1
+        paramList.append(parameter)
+    del sp.rxBuffer
+
 def serialPort_update(sp):
     global eserialName
     global paramList
+    global bflash
     if sp.checkConnectionChange():
         if sp.checkConnection() == False:
             tconnectButton.set('Connect')
             connectStatusString.set('Status: Not connected')
+            bflash.destroy()
             list_clear()
             clearScale()
+            del paramList[:]
         else:
+            if sp.getParam(paramList) == False:
+                sp.disconnect();
+                connectStatusString.set('Status: Not connected')
+                return;
+            bflash = tk.Button(window,text = 'Update',command = sp.sendUpdateCommand,
+                    width = 8, height = 1,font=('Arial,6'))
+            bflash.place(x=785,y=5)
+            param_update(sp)
             tconnectButton.set('Disconnect')
             connectStatusString.set('Status: Connected to '+sp.portName)
-            sp.getParam(paramList)
             list_show(paramList)
-            sp.clearRxBuffer()
 
 #=====================TODO: Save log======================
 #tk.Label(window,text='Enter Target File Name:',font=('Arial,8')).place(x=10,y=50)
