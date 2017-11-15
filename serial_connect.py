@@ -9,6 +9,8 @@ class serialPort:
     _changed = False
 
     rxBuffer = ()
+    paramName = []
+    subParamName = []
 
     param_count = 0
     _subparam_count = 0
@@ -63,6 +65,11 @@ class serialPort:
         self._ser.write('update ')
         print 'parameters saved'
 
+    def clearRxBuffer(self):
+        del self.paramName[:]
+        del self.subParamName[:]
+        self.rxBuffer = ()
+
     def getParam(self, params):
         #TODO:getParameters
         self._ser.flush()
@@ -81,20 +88,35 @@ class serialPort:
         print 'Retrieved '+str(self.param_count)+' parameters and ' +\
             str(self._subparam_count)+' sub-parameters'
 
-        byteSubparams =  self._ser.read(self.param_count * 8)
+        byteSubparams =  self._ser.read(self.param_count * 9)
         for byte in byteSubparams:
             self.rxBuffer = self.rxBuffer + st.unpack('b',byte)
         param_count = 0
 
         for i in range(0, self.param_count):
-            print 'Param '+ str(i)+' has '+ str(self.rxBuffer[8*i])+ ' subparams'
-            for j in range(0, self.rxBuffer[8*i]):
+            print 'Param '+ str(i)+' has '+ str(self.rxBuffer[9*i])+ ' subparams'
+            for j in range(0, self.rxBuffer[9*i]):
                 byteparams = self._ser.read(4)
                 self.rxBuffer = self.rxBuffer + st.unpack('f',byteparams)
-            param_count = param_count + self.rxBuffer[8*i]
+            param_count = param_count + self.rxBuffer[9*i]
+
+        for i in range(0, self.param_count):
+            p = str(self._ser.readline())
+            subp = str(self._ser.readline())
+            if p[0] == '*':
+                print 'unknown parameter name at position '+str(i)
+                p = 'Controller '+str(i)
+            self.paramName.append(p)
+            self.subParamName.append(subp.split())
+            if len(self.subParamName[i]) != self.rxBuffer[9*i]:
+                print 'incorrect subparameter name at position '+str(i)
+                self.subParamName[i] = []
+                for j in range(0, self.rxBuffer[9*i]):
+                    self.subParamName[i].append('p'+str(j))
+
 
         self._ser.flush()
-        if len(byteSubparams) != self.param_count*8 or param_count != self._subparam_count:
+        if len(byteSubparams) != self.param_count*9 or param_count != self._subparam_count:
             print 'GODDAMNIT!!Fucking incorrect parameters on board!'
             return False;
 

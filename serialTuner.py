@@ -175,15 +175,15 @@ def scale_update():
 
 def param_update(sp):
     global paramList
-    param_val_index = 8*(sp.param_count)
+    param_val_index = 9*(sp.param_count)
     for i in range(0, sp.param_count):
-        parameter = p.param('Controller '+str(i), i)
-        for j in range(0, sp.rxBuffer[8*i]):
-            parameter.addSubParam(p.subParam('Subp'+str(j),\
-                sp.rxBuffer[param_val_index],sp.rxBuffer[8*i + j + 1],j))
+        parameter = p.param(sp.paramName[i], sp.rxBuffer[9*i + 8])
+        for j in range(0, sp.rxBuffer[9*i]):
+            parameter.addSubParam(p.subParam(sp.subParamName[i][j],\
+                sp.rxBuffer[param_val_index],sp.rxBuffer[9*i + j + 1],j))
             param_val_index = param_val_index + 1
         paramList.append(parameter)
-    del sp.rxBuffer
+    sp.clearRxBuffer()
 
 def serialPort_update(sp):
     global eserialName

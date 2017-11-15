@@ -11,10 +11,14 @@
 #define PARAM_FLASH_HALF_BLOCK       64U
 #define PARAM_FLASH_BLOCK           128U
 
-static p_param_t    params[PARAMS_NUM_MAX];
-static uint8_t      subparams[PARAMS_NUM_MAX][8];
-static uint8_t      params_total = 0;
-static uint8_t      subparams_total = 0;
+static uint32_t            param_valid_flag = 0;
+static uint32_t            param_private_flag = 0;
+static p_param_t           params[PARAMS_NUM_MAX];
+static uint8_t             subparams[PARAMS_NUM_MAX][8];
+static uint8_t             params_total = 0;
+static uint8_t             subparams_total = 0;
+static param_name_t        param_name[PARAMS_NUM_MAX];
+static param_name_t        subparam_name[PARAMS_NUM_MAX];
 
 #define RXBUF_SIZE 7
 static uint8_t rxbuf[RXBUF_SIZE];
@@ -22,6 +26,23 @@ static thread_reference_t uart_receive_thread_handler = NULL;
 
 /* Private functions*/
 static void param_save_flash(void);
+
+static void uart_sendLine(const char* const string)
+{
+  char terminator = '\n';
+  uartStopSend(UART_PARAMS);
+  if(string != NULL)
+    uartStartSend(UART_PARAMS, strlen(string), string);
+  else
+  {
+    char null_char = '*';
+    uartStartSend(UART_PARAMS, 1, &null_char);
+  }
+  chThdSleepMilliseconds(20);
+  uartStopSend(UART_PARAMS);
+  uartStartSend(UART_PARAMS, 1, &terminator);
+  chThdSleepMilliseconds(5);
+}
 
 static THD_WORKING_AREA(params_tx_wa, 128);
 static THD_FUNCTION(params_tx,p)
@@ -32,22 +53,52 @@ static THD_FUNCTION(params_tx,p)
 
   uartStopSend(UART_PARAMS);
   uartStartSend(UART_PARAMS, 1, &params_total);
-  chThdSleepMilliseconds(50);
+  chThdSleepMilliseconds(5);
 
   uartStopSend(UART_PARAMS);
   uartStartSend(UART_PARAMS, 1, &subparams_total);
-  chThdSleepMilliseconds(50);
-
-  uartStopSend(UART_PARAMS);
-  uartStartSend(UART_PARAMS, 8*params_total, subparams[0]);
-  chThdSleepMilliseconds(50);
+  chThdSleepMilliseconds(5);
 
   uint8_t i;
-  for(i = 0; i<params_total; i++)
+  uint32_t flag;
+
+  flag = 1;
+  for (i = 0; i < PARAMS_NUM_MAX; i++)
   {
-    uartStopSend(UART_PARAMS);
-    uartStartSend(UART_PARAMS, 4*subparams[i][0], (uint8_t*)(params[i]));
-    chThdSleepMilliseconds(50);
+    if((flag&param_valid_flag) && !(flag&param_private_flag))
+    {
+      uartStopSend(UART_PARAMS);
+      uartStartSend(UART_PARAMS, 8, subparams[i]);
+      chThdSleepMilliseconds(10);
+
+      uartStopSend(UART_PARAMS);
+      uartStartSend(UART_PARAMS, 1, &i);
+      chThdSleepMilliseconds(5);
+    }
+    flag = flag<<1;
+  }
+
+  flag = 1;
+  for(i = 0; i<PARAMS_NUM_MAX; i++)
+  {
+    if((flag&param_valid_flag) && !(flag&param_private_flag))
+    {
+      uartStopSend(UART_PARAMS);
+      uartStartSend(UART_PARAMS, 4*subparams[i][0], (uint8_t*)(params[i]));
+      chThdSleepMilliseconds(10);
+    }
+    flag = flag<<1;
+  }
+
+  flag = 1;
+  for(i = 0; i<PARAMS_NUM_MAX; i++)
+  {
+    if((flag&param_valid_flag) && !(flag&param_private_flag))
+    {
+      uart_sendLine(param_name[i]);
+      uart_sendLine(subparam_name[i]);
+    }
+    flag = flag<<1;
   }
 
   chThdExit(MSG_OK);
@@ -63,7 +114,9 @@ static void rxend(UARTDriver *uartp)
     switch(rxbuf[0])
     {
       case 'p':
-        if(rxbuf[1] < params_total && rxbuf[2] < subparams[rxbuf[1]][0])
+        if((1<<rxbuf[1])&param_valid_flag &&
+           !((1<<rxbuf[1])&param_private_flag) &&
+           rxbuf[2] < subparams[rxbuf[1]][0])
         {
           chSysLockFromISR();
           params[rxbuf[1]][rxbuf[2]] = *((param_t*)(rxbuf+3));
@@ -71,7 +124,9 @@ static void rxend(UARTDriver *uartp)
         }
         break;
       case 's':
-        if(rxbuf[1] < params_total && rxbuf[2] < subparams[rxbuf[1]][0])
+        if((1<<rxbuf[1])&param_valid_flag &&
+           !((1<<rxbuf[1])&param_private_flag) &&
+           rxbuf[2] < subparams[rxbuf[1]][0])
           subparams[rxbuf[1]][rxbuf[2] + 1] = rxbuf[3];
         break;
       case 'u':
@@ -123,14 +178,19 @@ static void param_save_flash(void)
 {
   flashSectorErase(PARAM_FLASH_SECTOR);
   uint8_t i;
-
+  uint32_t flag = 1;
   flashaddr_t address = PARAM_FLASH_ADDR + 16;
-  for(i = 0; i<params_total; i++)
+
+  for(i = 0; i< PARAMS_NUM_MAX; i++)
   {
-    flashWrite(address,subparams[i],8);
-    flashWrite(address + PARAM_FLASH_HALF_BLOCK,
-      (char*)(params[i]), subparams[i][0]*4);
-    address += PARAM_FLASH_BLOCK;
+    if(flag&param_valid_flag)
+    {
+      flashWrite(address,subparams[i],8);
+      flashWrite(address + PARAM_FLASH_HALF_BLOCK,
+        (char*)(params[i]), subparams[i][0]*4);
+      address += PARAM_FLASH_BLOCK;
+    }
+    flag = flag<<1;
   }
 }
 
@@ -168,31 +228,51 @@ static uint8_t param_load_flash(const uint8_t param_pos, const uint8_t param_num
 }
 
 uint8_t params_set(param_t* const     p_param,
-                  const uint8_t      param_pos,
-                  const uint8_t      param_num)
+                  const uint8_t       param_pos,
+                  const uint8_t       param_num,
+                  param_name_t const  Param_name,
+                  param_name_t const  subParam_name,
+                  param_public_flag_t param_private)
 {
   //Maximum num of parameters and subparameters supported
-  if(param_pos != params_total || param_pos > PARAMS_NUM_MAX - 1 || param_num > 7)
+  if(param_num > 7 || param_pos >= PARAMS_NUM_MAX)
     return 1;
 
   uint8_t result = 0;
+  //Check whether this position is occupied or not
+  if(param_valid_flag & (1<<param_pos))
+    return 2;
+  else
+    param_valid_flag |= (uint32_t)(1<<param_pos);
+
   params[param_pos] = p_param;
   subparams[param_pos][0] = param_num;
 
   if(param_load_flash(param_pos, param_num))
   {
     subparams[param_pos][0] = param_num;
-    result = 2;
+    result = 3;
   }
 
-  params_total++;
-  subparams_total += param_num;
+  param_name[param_pos] = Param_name;
+  subparam_name[param_pos] = subParam_name;
+
+  if(param_private == PARAM_PRIVATE)
+    param_private_flag |= (uint32_t)(1 << param_pos);
+  else
+  {
+    params_total++;
+    subparams_total += param_num;
+  }
 
   return result;
 }
 
 void params_init(void)
 {
+  param_valid_flag = 0;
+  param_private_flag = 0;
+
   uartStart(UART_PARAMS, &uart_cfg);
   chThdCreateStatic(params_rx_wa,sizeof(params_rx_wa),
     NORMALPRIO + 7,params_rx,NULL);
