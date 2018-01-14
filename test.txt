@@ -1,4 +1,5 @@
---RMTunerEnterprize--2018-01-14-18-19-06--
+--RMTunerEnterprize--2018-01-14-21-23-57--
+--RMTunerEnterprize--2018-01-14-21-23-57--
 Gimbal Yaw Vel
  0 False 2
 	8780.0 KP 3 0
@@ -33,7 +34,7 @@ Gimbal Init Pos
 Gimbal FF Accl
  6 True 6
 	-2.35209989548 YawX -2 0
-	-0.0494000017643 YawY 1 1
+	-0.0494000017643 YawY 0 1
 	9.16189956665 YawZ -2 2
 	0.0 PitchX 0 3
 	0.0 PitchY 0 4
@@ -45,7 +46,7 @@ Gimbal Yaw Atti
 	0.151999995112 KD -1 2
 Gimbal Pitch Atti
  8 False 3
-	36.0499992371 KP 0 0
+	36.8199996948 KP 0 0
 	0.89099997282 KI -1 1
 	0.170000001788 KD -1 2
 accelT2

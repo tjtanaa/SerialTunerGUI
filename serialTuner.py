@@ -10,6 +10,11 @@ window = tk.Tk()
 window.title('SerialTuner')
 window.geometry('900x500')
 
+logo = tk.PhotoImage(file="logo.gif")
+
+w1 = tk.Label(window, image=logo).place(x=35,y=360)
+tk.Label(window,text='Ver: 1.2',font=('Arial,2')).place(x=35,y=465)
+
 #====================Serial Connection====================
 sp = sc.serialPort()
 tk.Label(window,text='Enter Serial Port Name:',font=('Arial,8')).place(x=10,y=10)
@@ -251,7 +256,7 @@ def paramSave():
     global popWindow1
     global fileName
     fileName = eFileName.get()
-    if fileName == '' or len(fileName) < 6 or fileName[len(fileName)-6:len(fileName)] != '.param':
+    if fileName == '' or len(fileName) < 4 or fileName[len(fileName)-4:len(fileName)] != '.txt':
         print 'please input the target file name'
         return
 
