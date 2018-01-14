@@ -324,11 +324,11 @@ def LoadToDevice(f,paramList):
                     subIndex = subNameList[index].index(subParam.name)
                     if subParam.value != tempParamList[index].subParams[subIndex].value:
                         subParam.value = tempParamList[index].subParams[subIndex].value
-                        sp.sendParam(subParam.value, index, subIndex)
+                        sp.sendParam(subParam.value, param.index, subParam.index)
                         print 'Updated \"'+subParam.name+'\" of \"'+param.name+"\" to be "+str(subParam.value)
                     if subParam.power != tempParamList[index].subParams[subIndex].power:
                         subParam.power = tempParamList[index].subParams[subIndex].power
-                        sp.sendScale(index, subIndex, subParam.power)
+                        sp.sendScale(param.index, subParam.index, subParam.power)
                 except ValueError:
                     print 'W: Parameter \"'+param.name+'\" (Num:'+str(tempParamList[index].index)+') missing sub-param in file'
         except ValueError:
@@ -338,7 +338,7 @@ def LoadToDevice(f,paramList):
 def inputYes2():
     global paramList
     fileName = eFileName.get()
-    if fileName == '' or len(fileName) < 6 or fileName[len(fileName)-6:len(fileName)] != '.param':
+    if fileName == '' or len(fileName) < 4 or fileName[len(fileName)-4:len(fileName)] != '.txt':
         print 'please input the target file name'
         return
 
