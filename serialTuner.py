@@ -4,6 +4,7 @@ import time
 import tuneScale as ts
 import serial_connect as sc
 import params as p
+import datetime as dt
 
 window = tk.Tk()
 window.title('SerialTuner')
@@ -47,7 +48,10 @@ paramList = []
 def list_show(paramList):
     global clb
     for item in paramList:
-        clb.insert('end',item.name)
+        if item.private == False:
+            clb.insert('end',item.name)
+        else:
+            clb.insert('end','')
 
 def list_clear():
     global clb
@@ -170,14 +174,18 @@ def scale_update():
     if index != param_index:
         param_index = index
         if param_index != 1000000:
-            setScale(paramList[param_index])
-            scaleChanged = True
+            if paramList[param_index].private == False:
+                setScale(paramList[param_index])
+                scaleChanged = True
+            else:
+                param_index = 1000000
 
 def param_update(sp):
     global paramList
     param_val_index = 9*(sp.param_count)
     for i in range(0, sp.param_count):
         parameter = p.param(sp.paramName[i], sp.rxBuffer[9*i + 8])
+        parameter.private = sp._private_flag[parameter.index]
         for j in range(0, sp.rxBuffer[9*i]):
             parameter.addSubParam(p.subParam(sp.subParamName[i][j],\
                 sp.rxBuffer[param_val_index],sp.rxBuffer[9*i + j + 1],j))
@@ -211,23 +219,164 @@ def serialPort_update(sp):
             list_show(paramList)
 
 #=====================TODO: Save log======================
-#tk.Label(window,text='Enter Target File Name:',font=('Arial,8')).place(x=10,y=50)
-eFileName = tk.Entry(window, width = 15, borderwidth = 2,font=('Arial,8'))
-#eFileName.place(x=210,y=48)
+tk.Label(window,text='Enter Target File Name:',font=('Arial,8')).place(x=175,y=460)
+eFileName = tk.Entry(window, width = 25, borderwidth = 2,font=('Arial,8'))
+eFileName.place(x=372,y=458)
+popWindow1 = 0
+popWindow2 = 0
+fileName = 0
+
+#TODO: Save parameters to Log
+def saveToFile(f):
+    if len(paramList) > 0:
+        f.write('--RMTunerEnterprize--' + dt.datetime.now().strftime('%Y-%m-%d-%H-%M-%S') + '--\n')
+        for item in paramList:
+            f.write(item.name +'\n '+ str(item.index) + ' ' + str(item.private) + ' '+str(len(item.subParams))+'\r\n')
+            for subitem in item.subParams:
+                f.write('\t'+str(subitem.value)+' '+subitem.name +' ' +str(subitem.power)+' '+str(subitem.index)+'\r\n')
+        print 'File saved'
+    else:
+        print 'No parameters to save'
+
+def inputYes1():
+    f = open(fileName,'w')
+    saveToFile(f)
+    f.close()
+    popWindow1.destroy()
+
+def inputNo1():
+    popWindow1.destroy()
 
 def paramSave():
-    pass
+    global popWindow1
+    global fileName
+    fileName = eFileName.get()
+    if fileName == '' or len(fileName) < 6 or fileName[len(fileName)-6:len(fileName)] != '.param':
+        print 'please input the target file name'
+        return
+
+    try:
+        f = open(fileName,'r')
+    except IOError:
+        fn = open(fileName,'w')
+        fn.write('--RMTunerEnterprize--' + dt.datetime.now().strftime('%Y-%m-%d-%H-%M-%S') + '--\n')
+        saveToFile(fn)
+        fn.close()
+        return
+
+    line1 = f.readline()
+    if line1[0:21] != '--RMTunerEnterprize--':
+        print 'Invalid file name 2'
+        f.close()
+        return
+
+    popWindow1 = tk.Toplevel()
+    popWindow1.title('Warning')
+    popWindow1.geometry('400x150')
+    tk.Label(popWindow1,text='Are you sure to overwrite this file?',font=('Arial,8')).place(x=50,y=25)
+    bY = tk.Button(popWindow1,text = 'Yes',command = inputYes1,
+        width = 10, height = 1,font=('Arial,6'))
+    bY.place(x=60,y=100)
+    bN = tk.Button(popWindow1,text = 'No',command = inputNo1,
+        width = 10, height = 1,font=('Arial,6'))
+    bN.place(x=210,y=100)
+
+def LoadToDevice(f,paramList):
+    global sp
+    global scaleList
+
+    nameList = []
+    subNameList = []
+    tempParamList = []
+
+    while True:
+        name = f.readline()
+        if name == '':
+            f.close()
+            break
+        name = name[0:len(name)-1]
+
+        info = f.readline()
+        infolist = info.split(' ')[1:4]
+        param = p.param(name,int(infolist[0]))
+        param.private = (infolist[1] == 'True')
+
+        subName = []
+        for i in range(0,int(infolist[2])):
+            subline = f.readline()
+            sublist = subline.split(' ')
+            param.addSubParam(p.subParam(sublist[1],float(sublist[0]),int(sublist[2]),i))
+            subName.append(sublist[1])
+        tempParamList.append(param)
+        nameList.append(name)
+        subNameList.append(subName)
+
+    for param in paramList:
+        try:
+            index = nameList.index(param.name)
+            for subParam in param.subParams:
+                try:
+                    subIndex = subNameList[index].index(subParam.name)
+                    if subParam.value != tempParamList[index].subParams[subIndex].value:
+                        subParam.value = tempParamList[index].subParams[subIndex].value
+                        sp.sendParam(subParam.value, index, subIndex)
+                        print 'Updated \"'+subParam.name+'\" of \"'+param.name+"\" to be "+str(subParam.value)
+                    if subParam.power != tempParamList[index].subParams[subIndex].power:
+                        subParam.power = tempParamList[index].subParams[subIndex].power
+                        sp.sendScale(index, subIndex, subParam.power)
+                except ValueError:
+                    print 'W: Parameter \"'+param.name+'\" (Num:'+str(tempParamList[index].index)+') missing sub-param in file'
+        except ValueError:
+            print 'W: Parameter \"'+param.name+'\" (Num:'+str(tempParamList[index].index)+') not found in file'
+        clearScale()
+
+def inputYes2():
+    global paramList
+    fileName = eFileName.get()
+    if fileName == '' or len(fileName) < 6 or fileName[len(fileName)-6:len(fileName)] != '.param':
+        print 'please input the target file name'
+        return
+
+    try:
+        f = open(fileName,'r')
+        line1 = f.readline()
+        if line1[0:21] != '--RMTunerEnterprize--':
+            print 'Invalid file name'
+            f.close()
+            return
+
+        LoadToDevice(f,paramList)
+        f.close()
+
+    except IOError:
+        print 'Invalid file name'
+    popWindow2.destroy()
+
+def inputNo2():
+    popWindow2.destroy()
 
 def paramLoad():
-    pass
+    global popWindow2
 
-bsave = tk.Button(window,text = 'Save',command = paramSave,
-    width = 8, height = 1,font=('Arial,6'))
-#bsave.place(x=475,y=48)
+    popWindow2 = tk.Toplevel()
+    popWindow2.title('Warning')
+    popWindow2.geometry('400x150')
+    tk.Label(popWindow2,text='Loading parameter file might be dangerous',font=('Arial,8')).place(x=35,y=50)
+    tk.Label(popWindow2,text='Please make sure the device is protected',font=('Arial,8')).place(x=35,y=25)
+    bY = tk.Button(popWindow2,text = 'Yes',command = inputYes2,
+        width = 10, height = 1,font=('Arial,6'))
+    bY.place(x=60,y=100)
+    bN = tk.Button(popWindow2,text = 'No',command = inputNo2,
+        width = 10, height = 1,font=('Arial,6'))
+    bN.place(x=210,y=100)
 
-bload = tk.Button(window,text = 'Load',command = paramLoad,
-    width = 8, height = 1,font=('Arial,6'))
-#bload.place(x=475,y=88)
+bsave = tk.Button(window,text = 'Save to file',command = paramSave,
+    width = 10, height = 1,font=('Arial,6'))
+bsave.place(x=632,y=455)
+
+bload = tk.Button(window,text = 'Load to device',command = paramLoad,
+    width = 10, height = 1,font=('Arial,6'))
+bload.place(x=765,y=455)
 #========================Main loop=========================
 while True:
     scale_update()

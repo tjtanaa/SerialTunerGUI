@@ -14,6 +14,7 @@ class serialPort:
 
     param_count = 0
     _subparam_count = 0
+    _private_flag = []
 
     #public
     portName = ''
@@ -45,13 +46,13 @@ class serialPort:
         byte = st.pack('f',value)
         self._ser.write('p'+chr(index)+chr(sub_index))
         self._ser.write(byte)
-        print 'p '+str(index)+' '+str(sub_index)+' '+str(value)
+        #print 'p '+str(index)+' '+str(sub_index)+' '+str(value)
 
     def sendScale(self, index, sub_index, power):
         byte = st.pack('i',power)
         self._ser.write('s'+chr(index)+chr(sub_index))
         self._ser.write(byte)
-        print 's '+str(index)+' '+str(sub_index)+' '+str(power)
+        #print 's '+str(index)+' '+str(sub_index)+' '+str(power)
 
     def sendConfirmation(self):
         byte1 = st.pack('i',self.param_count)
@@ -59,7 +60,7 @@ class serialPort:
         self._ser.write('ccc')
         self._ser.write(byte1)
         self._ser.write(byte2)
-        print 'c '+str(self.param_count)+' '+str(self._subparam_count)
+        #print 'c '+str(self.param_count)+' '+str(self._subparam_count)
 
     def sendUpdateCommand(self):
         self._ser.write('update ')
@@ -77,6 +78,10 @@ class serialPort:
 
         byte1 =  self._ser.read(1)
         byte2 =  self._ser.read(1)
+        byte_private = self._ser.read(4)
+        private = st.unpack('I',byte_private)[0]
+        for i in range(0,32):
+            self._private_flag.append((private & pow(2,i) > 0))
 
         if len(byte1) == 0:
             print 'Unable to retrieve parameters from board!'
@@ -94,7 +99,7 @@ class serialPort:
         param_count = 0
 
         for i in range(0, self.param_count):
-            print 'Param '+ str(i)+' has '+ str(self.rxBuffer[9*i])+ ' subparams'
+            #print 'Param '+ str(i)+' has '+ str(self.rxBuffer[9*i])+ ' subparams'
             for j in range(0, self.rxBuffer[9*i]):
                 byteparams = self._ser.read(4)
                 self.rxBuffer = self.rxBuffer + st.unpack('f',byteparams)
@@ -106,7 +111,10 @@ class serialPort:
             if p[0] == '*':
                 print 'unknown parameter name at position '+str(i)
                 p = 'Controller '+str(i)
+            p = p[0:len(p)-1]
             self.paramName.append(p)
+            print self.paramName[i]
+
             self.subParamName.append(subp.split())
             if len(self.subParamName[i]) != self.rxBuffer[9*i]:
                 print 'incorrect subparameter name at position '+str(i)

@@ -14,6 +14,7 @@ class param:
     name = ''
     subParams = []
     index = 0
+    private = False
 
     def __init__(self, name, index = 0):
         self.name = name
