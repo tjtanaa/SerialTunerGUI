@@ -13,7 +13,7 @@ window.geometry('900x500')
 logo = tk.PhotoImage(file="logo.gif")
 
 w1 = tk.Label(window, image=logo).place(x=35,y=360)
-tk.Label(window,text='Ver: 1.2',font=('Arial,2')).place(x=35,y=465)
+tk.Label(window,text='Ver: 1.2.01',font=('Arial,2')).place(x=35,y=465)
 
 #====================Serial Connection====================
 sp = sc.serialPort()
