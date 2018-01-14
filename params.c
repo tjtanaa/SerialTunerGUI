@@ -1,3 +1,9 @@
+/**
+ * Edward ZHANG, 20171111
+ * @file    param.c
+ * @brief   parameter tuning and management interface
+ */
+
 #include "ch.h"
 #include "hal.h"
 
@@ -23,9 +29,6 @@ static param_name_t        subparam_name[PARAMS_NUM_MAX];
 #define RXBUF_SIZE 7
 static uint8_t rxbuf[RXBUF_SIZE];
 static thread_reference_t uart_receive_thread_handler = NULL;
-
-/* Private functions*/
-static void param_save_flash(void);
 
 static void uart_sendLine(const char* const string)
 {
@@ -59,13 +62,17 @@ static THD_FUNCTION(params_tx,p)
   uartStartSend(UART_PARAMS, 1, &subparams_total);
   chThdSleepMilliseconds(5);
 
+  uartStopSend(UART_PARAMS);
+  uartStartSend(UART_PARAMS, 4, (uint8_t*)&param_private_flag);
+  chThdSleepMilliseconds(5);
+
   uint8_t i;
   uint32_t flag;
 
   flag = 1;
   for (i = 0; i < PARAMS_NUM_MAX; i++)
   {
-    if((flag&param_valid_flag) && !(flag&param_private_flag))
+    if(flag&param_valid_flag)
     {
       uartStopSend(UART_PARAMS);
       uartStartSend(UART_PARAMS, 8, subparams[i]);
@@ -81,7 +88,7 @@ static THD_FUNCTION(params_tx,p)
   flag = 1;
   for(i = 0; i<PARAMS_NUM_MAX; i++)
   {
-    if((flag&param_valid_flag) && !(flag&param_private_flag))
+    if(flag&param_valid_flag)
     {
       uartStopSend(UART_PARAMS);
       uartStartSend(UART_PARAMS, 4*subparams[i][0], (uint8_t*)(params[i]));
@@ -93,7 +100,7 @@ static THD_FUNCTION(params_tx,p)
   flag = 1;
   for(i = 0; i<PARAMS_NUM_MAX; i++)
   {
-    if((flag&param_valid_flag) && !(flag&param_private_flag))
+    if(flag&param_valid_flag)
     {
       uart_sendLine(param_name[i]);
       uart_sendLine(subparam_name[i]);
@@ -115,7 +122,6 @@ static void rxend(UARTDriver *uartp)
     {
       case 'p':
         if((1<<rxbuf[1])&param_valid_flag &&
-           !((1<<rxbuf[1])&param_private_flag) &&
            rxbuf[2] < subparams[rxbuf[1]][0])
         {
           chSysLockFromISR();
@@ -125,7 +131,6 @@ static void rxend(UARTDriver *uartp)
         break;
       case 's':
         if((1<<rxbuf[1])&param_valid_flag &&
-           !((1<<rxbuf[1])&param_private_flag) &&
            rxbuf[2] < subparams[rxbuf[1]][0])
           subparams[rxbuf[1]][rxbuf[2] + 1] = rxbuf[3];
         break;
@@ -174,28 +179,6 @@ static THD_FUNCTION(params_rx,p)
   }
 }
 
-static void param_save_flash(void)
-{
-  flashSectorErase(PARAM_FLASH_SECTOR);
-  uint8_t i;
-  uint32_t flag = 1;
-  flashaddr_t address = PARAM_FLASH_ADDR + 16;
-
-  for(i = 0; i< PARAMS_NUM_MAX; i++)
-  {
-    if(flag&param_valid_flag)
-    {
-      flashWrite(address,subparams[i],8);
-      flashWrite(address + PARAM_FLASH_HALF_BLOCK,
-        (char*)(params[i]), subparams[i][0]*4);
-      address += PARAM_FLASH_BLOCK;
-    }
-    flag = flag<<1;
-  }
-}
-
-
-
 static uint8_t param_load_flash(const uint8_t param_pos, const uint8_t param_num)
 {
   uint8_t result = 0;
@@ -205,11 +188,12 @@ static uint8_t param_load_flash(const uint8_t param_pos, const uint8_t param_num
   flashRead(address,subparams[param_pos],8);
 
   uint8_t i;
-  if(subparams[param_pos][0] == 0xFF)
+  if(subparams[param_pos][0] != param_num)
   {
-    for(i = 0; i < 8; i++)
+    for(i = 1; i < 8; i++)
       subparams[param_pos][i] = 0;
     subparams[param_pos][0] = param_num;
+    result = 1;
   }
 
   flashRead(address + PARAM_FLASH_HALF_BLOCK,
@@ -249,21 +233,16 @@ uint8_t params_set(param_t* const     p_param,
   subparams[param_pos][0] = param_num;
 
   if(param_load_flash(param_pos, param_num))
-  {
-    subparams[param_pos][0] = param_num;
     result = 3;
-  }
 
   param_name[param_pos] = Param_name;
   subparam_name[param_pos] = subParam_name;
 
   if(param_private == PARAM_PRIVATE)
     param_private_flag |= (uint32_t)(1 << param_pos);
-  else
-  {
-    params_total++;
-    subparams_total += param_num;
-  }
+
+  params_total++;
+  subparams_total += param_num;
 
   return result;
 }
@@ -276,4 +255,24 @@ void params_init(void)
   uartStart(UART_PARAMS, &uart_cfg);
   chThdCreateStatic(params_rx_wa,sizeof(params_rx_wa),
     NORMALPRIO + 7,params_rx,NULL);
+}
+
+void param_save_flash(void)
+{
+  flashSectorErase(PARAM_FLASH_SECTOR);
+  uint8_t i;
+  uint32_t flag = 1;
+  flashaddr_t address;
+
+  for(i = 0; i< PARAMS_NUM_MAX; i++)
+  {
+    if(flag&param_valid_flag)
+    {
+      address = PARAM_FLASH_ADDR + 16 + PARAM_FLASH_BLOCK*i;
+      flashWrite(address,subparams[i],8);
+      flashWrite(address + PARAM_FLASH_HALF_BLOCK,
+        (char*)(params[i]), subparams[i][0]*4);
+    }
+    flag = flag<<1;
+  }
 }
